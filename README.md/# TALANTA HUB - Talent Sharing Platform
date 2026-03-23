@@ -1,0 +1,37 @@
+# TALANTA HUB - Talent Sharing Platform
+
+A full-stack talent sharing platform where users can share their skills, upload media, and message each other in real-time.
+
+## Features
+
+- 🔐 User Authentication (Register/Login)
+- 📝 Share Talents with descriptions
+- 📷 Upload Images, Videos, and Audio
+- 💬 Real-time Messaging with Socket.io
+- 👥 Community Feed with Categories
+- 🔍 Filter Talents by Category
+- 📱 Responsive Design
+
+## Tech Stack
+
+- **Frontend**: HTML5, CSS3, JavaScript
+- **Backend**: Node.js, Express.js
+- **Database**: MongoDB
+- **Real-time**: Socket.io
+- **Authentication**: JWT
+
+## Deployment
+
+This app is deployed on Render.com.
+
+## Local Development
+
+1. Clone the repository
+2. Install dependencies: `cd server && npm install`
+3. Create `.env` file with your MongoDB URI and JWT secret
+4. Run backend: `npm run dev`
+5. Open `client/index.html` in browser
+
+## Environment Variables
+
+Create a `.env` file in the server folder:
