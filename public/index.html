@@ -1,0 +1,228 @@
+// Add to your existing frontend script
+const API_URL = 'http://localhost:5000/api';
+
+// Store token
+let authToken = localStorage.getItem('token');
+
+// Helper function for API calls
+async function apiCall(endpoint, options = {}) {
+    const headers = {
+        'Content-Type': 'application/json',
+        ...options.headers
+    };
+    
+    if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+    }
+    
+    const response = await fetch(`${API_URL}${endpoint}`, {
+        ...options,
+        headers
+    });
+    
+    if (response.status === 401) {
+        // Token expired, logout
+        logout();
+        throw new Error('Session expired');
+    }
+    
+    return response;
+}
+
+// Update login function
+async function login(email, password) {
+    const response = await apiCall('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password })
+    });
+    
+    if (response.ok) {
+        const data = await response.json();
+        authToken = data.token;
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data));
+        currentLoggedInUser = { name: data.name, email: data.email, _id: data._id };
+        showMainApp();
+        return true;
+    }
+    return false;
+}
+
+// Update signup function
+async function signup(name, email, password) {
+    const response = await apiCall('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({ name, email, password })
+    });
+    
+    if (response.ok) {
+        const data = await response.json();
+        return { success: true };
+    }
+    const error = await response.json();
+    return { success: false, error: error.message };
+}
+
+// Update addTalent function
+async function addTalent() {
+    const name = document.getElementById('talentName').value.trim() || currentLoggedInUser.name;
+    const category = document.getElementById('talentCategory').value;
+    const skill = document.getElementById('talentSkill').value.trim();
+    const bio = document.getElementById('talentBio').value.trim();
+    const email = document.getElementById('talentEmail').value.trim() || currentLoggedInUser.email;
+    const social = document.getElementById('talentSocial').value.trim();
+    
+    if(!skill || !bio) { alert('Please fill talent title and description'); return; }
+    
+    const response = await apiCall('/talents', {
+        method: 'POST',
+        body: JSON.stringify({ name, category, skill, bio, email, social, media: currentMediaFiles })
+    });
+    
+    if (response.ok) {
+        clearForm();
+        switchTab('community');
+        showToast('Talent published!');
+        loadTalents();
+    } else {
+        const error = await response.json();
+        showToast('Error: ' + error.message);
+    }
+}
+
+// Update loadTalents function
+async function loadTalents() {
+    const response = await apiCall('/talents');
+    if (response.ok) {
+        talents = await response.json();
+        renderHome();
+        renderCommunity();
+    }
+}
+
+// Update loadUniqueUsers function
+async function loadUniqueUsers() {
+    const response = await apiCall('/talents/users/unique');
+    if (response.ok) {
+        const users = await response.json();
+        // Update your UI with unique users
+        return users;
+    }
+    return [];
+}
+
+// Update loadMessages function
+async function loadConversations() {
+    const response = await apiCall('/messages/conversations');
+    if (response.ok) {
+        const conversations = await response.json();
+        renderConversationsList(conversations);
+    }
+}
+
+async function loadChatMessages(user) {
+    const response = await apiCall(`/messages/${encodeURIComponent(user)}`);
+    if (response.ok) {
+        const messages = await response.json();
+        renderChatMessages(messages, user);
+    }
+}
+
+async function sendMessageToBackend(to, text) {
+    const response = await apiCall('/messages', {
+        method: 'POST',
+        body: JSON.stringify({ to, text })
+    });
+    
+    if (response.ok) {
+        const message = await response.json();
+        // Add to local messages array
+        messages.push(message);
+        if (activeConversation === to) {
+            renderChatMessages(messages.filter(m => 
+                (m.from === currentLoggedInUser.name && m.to === to) || 
+                (m.from === to && m.to === currentLoggedInUser.name)
+            ), to);
+        }
+        renderConversationsList();
+        return true;
+    }
+    return false;
+}
+
+// File upload function
+async function uploadFile(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const response = await fetch(`${API_URL}/upload`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${authToken}`
+        },
+        body: formData
+    });
+    
+    if (response.ok) {
+        const data = await response.json();
+        return data;
+    }
+    return null;
+}
+
+// Update handleFiles to upload to server
+async function handleFiles(files) {
+    for (const file of Array.from(files)) {
+        if (file.size > 10 * 1024 * 1024) {
+            alert(`${file.name} exceeds 10MB limit`);
+            continue;
+        }
+        
+        const result = await uploadFile(file);
+        if (result) {
+            currentMediaFiles.push({
+                type: result.type,
+                url: result.url,
+                name: result.filename
+            });
+        }
+    }
+    renderMediaPreview();
+}
+
+// Socket.io for real-time messaging
+const socket = io('http://localhost:5000');
+
+socket.on('connect', () => {
+    if (currentLoggedInUser) {
+        socket.emit('register', currentLoggedInUser._id);
+    }
+});
+
+socket.on('receive_message', (data) => {
+    // Add to local messages
+    const newMessage = {
+        from: data.from,
+        to: currentLoggedInUser.name,
+        text: data.text,
+        timestamp: new Date(data.timestamp)
+    };
+    messages.push(newMessage);
+    
+    if (activeConversation === data.from) {
+        renderChatMessages(messages.filter(m => 
+            (m.from === currentLoggedInUser.name && m.to === data.from) || 
+            (m.from === data.from && m.to === currentLoggedInUser.name)
+        ), data.from);
+    }
+    renderConversationsList();
+    showToast(`New message from ${data.from}`);
+});
+
+// Initialize app
+async function initApp() {
+    await loadTalents();
+    await loadConversations();
+}
+
+// Call init when logged in
